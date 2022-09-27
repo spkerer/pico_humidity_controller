@@ -28,9 +28,10 @@ DEFAULT_LOW_RH   = 55.0   # Turn on all humidifiers if RH drops below the LOW th
 WARN_PCT         = 30.0   # When a humidifier is this % or less full, show its bar yellow.  If on low and one is available, switch to another lo humidifier
 ERROR_PCT        = 10.0   # When a humidifier is this % or less full, show its bar red.
 
+LED_TRACK_SENSOR = False  # When true, light leds to track sensor interactions
 
 # Set to fake RH
-FAKE_RH = True
+FAKE_RH = False
 if FAKE_RH:
     RH_UPDATE_SECS = 7
     
@@ -1102,34 +1103,44 @@ def read_humidity():
         log_message("reading sample %d" % i)
         if sensor_power_pin.value() == 1:
             log_message("sensor power on.  Turning off and sleeping 500ms")
-            led_rgb(255,255,0) # yellow
+            if LED_TRACK_SENSOR:
+                led_rgb(255,255,0) # yellow
             sensor_power_pin.value(0)
-            clear_led()
+            if LED_TRACK_SENSOR:
+                clear_led()
             time.sleep_ms(500)
 
         #log_message("Enabling sensor power")
-        led_rgb(255,255,0) # yellow
+        if LED_TRACK_SENSOR:
+            led_rgb(255,255,0) # yellow
         sensor_power_pin.value(1)
-        clear_led()
+        if LED_TRACK_SENSOR:
+            clear_led()
 
         #log_message("Sleeping 500ms for sensor to wake up")
         time.sleep_ms(500)
 
         #log_message("Creating dht20")
-        led_rgb(0,0,255) #blue
+        if LED_TRACK_SENSOR:
+            led_rgb(0,0,255) #blue
         dht20 = DHT20(i2c)
-        led_rgb(255,0,255) # magenta
+        if LED_TRACK_SENSOR:
+            led_rgb(255,0,255) # magenta
         #log_message("Reading dht20 temperature")
         temperature = dht20.dht20_temperature()
         temperature = (temperature * 9.0 / 5.0 ) + 32.0
         #log_message("Reading dht20 humidity")
-        led_rgb(0,255,255) # cyan
+        if LED_TRACK_SENSOR:
+            led_rgb(0,255,255) # cyan
         humidity = dht20.dht20_humidity()
         #log_message("read temperature : %.4f, humidity : %.4f" % (temperature, humidity))
 
         #log_message("De-powering sensor")
-        led_rgb(255,255,0) #yellow
+        if LED_TRACK_SENSOR:
+            led_rgb(255,255,0) #yellow
         sensor_power_pin.value(0)
+        if LED_TRACK_SENSOR:
+            clear_led()
         
         humidity_total = humidity_total + humidity
         humidity_count = humidity_count + 1
@@ -1139,7 +1150,8 @@ def read_humidity():
     
     humidity = humidity_total / humidity_count
     log_message("reporting humidify of %.4f" % humidity)
-    clear_led()
+    if LED_TRACK_SENSOR:
+        clear_led()
     return round(humidity, 2)
 
 
