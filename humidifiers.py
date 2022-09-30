@@ -20,10 +20,13 @@ BAR_DISPLAY_SECS = 5      # How often to refresh the bar display screen
 RH_UPDATE_SECS   = 300    # How often to read the sensor to update relative humidity (RH)
 TICK_INTERVAL    = 24     # How often to draw ticks (longer bars) on RH plot.  Interval of 24 ticks with 300 second updates means a tick every two hours of data
 AUTOMATE_SECS    = 5      # How often to check whether the automation settings (relays) need updating
-HEARTBEAT_MS     = 1000   # How often to blink the heartbeat circle in the upper left corner
 
-DEFAULT_ON_RH    = 66.0   # Turn on one low humidifier if RH drops below the ON threshold (default setting)
-DEFAULT_LOW_RH   = 55.0   # Turn on all humidifiers if RH drops below the LOW threshold (default setting)
+OFF_HB_MS        = 2000   # How often to blink the heartbeat circle in the upper left corner when off
+LIGHT_HB_MS      = 1000   # How often to blink the heartbeat circle in the upper left corner when light humidifying
+HEAVY_HB_MS      =  500   # How often to blink the heartbeat circle in the upper left corner when heavy humidifying
+
+DEFAULT_ON_RH    = 60.0   # Turn on one low humidifier if RH drops below the ON threshold (default setting)
+DEFAULT_LOW_RH   = 54.0   # Turn on all humidifiers if RH drops below the LOW threshold (default setting)
 
 WARN_PCT         = 30.0   # When a humidifier is this % or less full, show its bar yellow.  If on low and one is available, switch to another lo humidifier
 ERROR_PCT        = 10.0   # When a humidifier is this % or less full, show its bar red.
@@ -651,7 +654,12 @@ def choose_humidifiers_heavy():
 def automate_energizing():
     global humidifying
     needed_humidifying = determine_needed_humidifying()
-    
+
+    # ensure any humidifiers set as off are deenergized
+    for i in range(len(humidifiers)):
+        if humidifiers[i]["setting"] == "off":
+            deenergize_humidifier(humidifiers[i])
+
     if needed_humidifying == "off":
         if humidifying == "off":
             log_message("humidifying staying off, current_rh = %.1f%%, above %.1f%% (debounce=%.1f%%), staying off" % (current_rh, on_rh, DEBOUNCE_RH_AMOUNT))
@@ -1354,7 +1362,13 @@ try:
             last_display_time = time.time()
 
         # toggle the heartbeat as needed
-        if time.ticks_diff(time.ticks_ms(), last_heartbeat_ms) >= HEARTBEAT_MS:
+        if humidifying == "off" and time.ticks_diff(time.ticks_ms(), last_heartbeat_ms) >= OFF_HB_MS:
+            toggle_heartbeat()
+            last_heartbeat_ms = time.ticks_ms()
+        elif humidifying == "light" and time.ticks_diff(time.ticks_ms(), last_heartbeat_ms) >= LIGHT_HB_MS:
+            toggle_heartbeat()
+            last_heartbeat_ms = time.ticks_ms()
+        elif humidifying == "heavy" and time.ticks_diff(time.ticks_ms(), last_heartbeat_ms) >= HEAVY_HB_MS:
             toggle_heartbeat()
             last_heartbeat_ms = time.ticks_ms()
 
