@@ -8,10 +8,10 @@ from picographics import PicoGraphics, DISPLAY_PICO_DISPLAY
 from pimoroni import RGBLED
 
 
-########################
+###############################################################################
 # Constants
 #
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 
 
 # Overall settings
@@ -27,6 +27,7 @@ HEAVY_HB_MS      =  500   # How often to blink the heartbeat circle in the upper
 
 DEFAULT_ON_RH    = 60.0   # Turn on one low humidifier if RH drops below the ON threshold (default setting)
 DEFAULT_LOW_RH   = 54.0   # Turn on all humidifiers if RH drops below the LOW threshold (default setting)
+SWITCH_PCT       = 20.0   # When running a single lo humidifier, swtich if another is available with at least this pct more capacity left
 
 WARN_PCT         = 30.0   # When a humidifier is this % or less full, show its bar yellow.  If on low and one is available, switch to another lo humidifier
 ERROR_PCT        = 10.0   # When a humidifier is this % or less full, show its bar red.
@@ -37,7 +38,7 @@ LED_TRACK_SENSOR = False  # When true, light leds to track sensor interactions
 FAKE_RH = False
 if FAKE_RH:
     RH_UPDATE_SECS = 7
-    
+
 
 # Main bar screen settings
 #
@@ -63,8 +64,10 @@ MIN_RH_PLOT_PCT = 45                             # Min RH of background line gra
 MAX_RH_PLOT_PCT = 75                             # Max RH of background line graph behind displayed RH value
 RH_SCALE        = 1.5                            # Scaling factor for text displaying RH value
 
-HI_PCT_USED_PER_SECOND = 100.0 / (11 * 60 * 60 + 45 * 60)  # Number of seconds a humidifier at HI should last (11h, 45m)
-LO_PCT_USED_PER_SECOND = 100.0 / (23 * 60 * 60 + 30 * 60)  # Number of seconds a humidifier at HI should last (23h, 30m)
+MAX_SECONDS_AT_HI      = 11 * 60 * 60 + 45 * 60  # 11h 45m
+MAX_SECONDS_AT_LO      = 23 * 60 * 60 + 45 * 60  # 23h 45m
+HI_PCT_USED_PER_SECOND = 100.0 / MAX_SECONDS_AT_HI  # Number of seconds a humidifier at HI should last
+LO_PCT_USED_PER_SECOND = 100.0 / MAX_SECONDS_AT_LO  # Number of seconds a humidifier at HI should last
 
 UP_ARROW_LINES =   [ [ 5,  0,  8,  0 ],          # Line description for RH trending UP line
                      [ 8,  0,  9,  3 ],          # Line description for RH trending UP line
@@ -123,7 +126,7 @@ HMIDITY_SENSOR_POWER_PIN_NUMBER = 2  # GPIO pin for sensor power
 HUMIDITY_SENSOR_ADDRESS = 0x38       # I2C address of sensor
 
 #
-########################
+###############################################################################
 
 
 on_rh  = DEFAULT_ON_RH     # on_rh holds the currently set "ON" RH threshold where light humidifying happens
@@ -170,34 +173,33 @@ last_button_ms = time.ticks_ms()    # ms resolution time of last button press - 
 heartbeat_on = False                # indicator of whether the heartbeat circle is currently shown or not - gets toggled at heartbeat interval
 
 
-######## FAKE RH ###############################
+######## FAKE RH ######################################################################################
 fake_rh_ascending = True  # Is fake RH ascending (or descending)
-fake_rh_step = 0.7        # How much to step fake RH at each reading
+fake_rh_step = 0.2        # How much to step fake RH at each reading
 fake_rh_hi = 72.0         # When fake RH is above this, start descending fake RH
 fake_rh_low = 48.0        # When fake RH is below this, start ascending fake RH
-######## FAKE RH ###############################
+######## FAKE RH ######################################################################################
 
 
 
-#######################################################
-################# BEGIN LOGGER ########################
-#######################################################
+##############################################################################################################
+################# BEGIN LOGGER ###############################################################################
+##############################################################################################################
 #
 def log_message(message):
     year, month, day, hour, minute, second, micro, milli = time.localtime()
 
     print("%02d:%02d:%02d %s" % (hour, minute, second, message))
-#######################################################
-################## END LOGGER #########################
-#######################################################
-    
+##############################################################################################################
+################## END LOGGER ################################################################################
+##############################################################################################################
 
 
 
 
-#######################################################
-############## BEGIN DISPLAY SETUP ####################
-#######################################################
+##############################################################################################################
+############## BEGIN DISPLAY SETUP ###########################################################################
+##############################################################################################################
 #
 display = PicoGraphics(display=DISPLAY_PICO_DISPLAY, rotate=0)
 WIDTH, HEIGHT = display.get_bounds()
@@ -222,14 +224,15 @@ GRAY    = display.create_pen( 24,  24,  24)
 
 LED = RGBLED(6, 7, 8) # pins 6, 7, 8
 LED.set_rgb(0, 0, 0)
-#######################################################
-############### END DISPLAY SETUP #####################
-#######################################################
+##############################################################################################################
+############### END DISPLAY SETUP ############################################################################
+##############################################################################################################
 
 
 # Keep one historical RH reading for each pixel of display width
 MAX_PREV_RH_READINGS = WIDTH
-prev_rh_readings = [ 0 ] * MAX_PREV_RH_READINGS
+prev_rh_readings = [ { "reading" : 0, "humidifying" : "off" } ] * MAX_PREV_RH_READINGS
+PREV_RH_GRAPH_COLORS = { "off"  : GREEN, "light" : YELLOW, "heavy" : MAGENTA }
 
 
 # setup outlet control pins
@@ -248,9 +251,9 @@ sensor_power_pin = machine.Pin(HMIDITY_SENSOR_POWER_PIN_NUMBER, machine.Pin.OUT)
 
 
 
-#######################################################
-########### BEGIN ERROR TEXT DISPLAY ##################
-#######################################################
+##############################################################################################################
+########### BEGIN ERROR TEXT DISPLAY #########################################################################
+##############################################################################################################
 #
 # Display the error text on the display
 #
@@ -260,15 +263,15 @@ def display_error_text(error_text):
     display.set_font("bitmap6")
     display.text(error_text, 0, 0, wordwrap=HEIGHT)
     display.update()
-#######################################################
-############ END ERROR TEXT DISPLAY ##################$
-#######################################################
+##############################################################################################################
+############ END ERROR TEXT DISPLAY ##################$#######################################################
+##############################################################################################################
 
 
 
-#######################################################
-############### BEGIN LED CONTROL #####################
-#######################################################
+##############################################################################################################
+############### BEGIN LED CONTROL ############################################################################
+##############################################################################################################
 #
 def clear_led():
     LED.set_rgb(0, 0, 0)
@@ -284,19 +287,19 @@ def led_green(bright=False):
         LED.set_rgb(0, 128, 0)
     else:
         LED.set_rgb(0, 8, 0)
-        
+
 def led_rgb(r, g, b):
     LED.set_rgb(r, g, b)
 #
-#######################################################
-################ END LED CONTROL ######################
-#######################################################
+##############################################################################################################
+################ END LED CONTROL #############################################################################
+##############################################################################################################
 
 
 
-#######################################################
-########## BEGIN HUMIDIFIER BARS SCREEN ###############
-#######################################################
+##############################################################################################################
+########## BEGIN HUMIDIFIER BARS SCREEN ######################################################################
+##############################################################################################################
 #
 # Calculate pct used for humidifier.
 # This includes the lo_secs, hi_secs and the amount of time
@@ -304,15 +307,18 @@ def led_rgb(r, g, b):
 #
 def calculate_pct_used(humidifier):
     # calculate total lo and hi secs used
+    secs_since_setting = time.time() - humidifier["last_setting_time"]
+    #log_message("calculate_pct_used %s, secs_since_setting = %d" % (str(humidifier), secs_since_setting))
     lo_secs = humidifier["lo_secs"]
     if humidifier["setting"] == "lo" and humidifier["energized"]:
-        lo_secs = lo_secs + time.time() - humidifier["last_setting_time"]
+        lo_secs = lo_secs + secs_since_setting
     hi_secs = humidifier["hi_secs"]
     if humidifier["setting"] == "hi" and humidifier["energized"]:
-        hi_secs = hi_secs + time.time() - humidifier["last_setting_time"]
+        hi_secs = hi_secs + secs_since_setting
     # calculate pct used from the secs
+    #log_message("lo_pct_used = %.4f, hi_pct_used = %.4f" % (float(lo_secs) * LO_PCT_USED_PER_SECOND, float(hi_secs) * HI_PCT_USED_PER_SECOND))
     pct_used = float(lo_secs) * LO_PCT_USED_PER_SECOND + float(hi_secs) * HI_PCT_USED_PER_SECOND
-    #log_message("pct_used for humidifier %d : %.1f" % (humidifier["outlet"], pct_used))
+    #log_message("pct_used for humidifier %d : %.4f" % (humidifier["outlet"], pct_used))
     return pct_used
 
 
@@ -342,10 +348,9 @@ def display_humidifier_bars():
     # clear the display
     display.set_pen(BLACK)
     display.clear()
-    
+
     # show RH plot in background.
     # Include a "tick" (additional pixels) at every TICK_INTERVAL - which if set correctly should align with each hour back
-    display.set_pen(INDIGO)
     since_tick = 0
     draw_tick = False
     for i in range(0, WIDTH):
@@ -355,17 +360,17 @@ def display_humidifier_bars():
         else:
             since_tick = since_tick + 1
         reading_index = WIDTH - i - 1
-        if prev_rh_readings[reading_index] > 0:
-            display.pixel(i, calculate_RH_y(prev_rh_readings[reading_index], HALF_HEIGHT - 10))
+        if prev_rh_readings[reading_index]["reading"] > 0:
+            display.set_pen(PREV_RH_GRAPH_COLORS[prev_rh_readings[reading_index]["humidifying"]])
+            display.pixel(i, calculate_RH_y(prev_rh_readings[reading_index]["reading"], HALF_HEIGHT - 10))
             if draw_tick:
                 display.set_pen(YELLOW)
                 display.pixel(i, 0)
                 display.pixel(i, 1)
-                display.pixel(i, calculate_RH_y(prev_rh_readings[reading_index], HALF_HEIGHT - 10)+2)
-                display.pixel(i, calculate_RH_y(prev_rh_readings[reading_index], HALF_HEIGHT - 10)-2)
+                display.pixel(i, calculate_RH_y(prev_rh_readings[reading_index]["reading"], HALF_HEIGHT - 10)+2)
+                display.pixel(i, calculate_RH_y(prev_rh_readings[reading_index]["reading"], HALF_HEIGHT - 10)-2)
                 display.pixel(i, HALF_HEIGHT - 10)
                 display.pixel(i, HALF_HEIGHT - 11)
-                display.set_pen(INDIGO)
                 draw_tick = False
 
     # show the current RH as a number and percent sign
@@ -376,7 +381,7 @@ def display_humidifier_bars():
     x_start = HALF_WIDTH - int(text_width/2)
     y_midline = int(HALF_HEIGHT/2)
     display.text(rh_text, x_start, y_midline, scale = RH_SCALE)
-    
+
     # show the trend - up, even or down arrow
     arrow_x = x_start + text_width + 5
     arrow_y = y_midline - int(ARROW_HEIGHT/2)
@@ -403,10 +408,10 @@ def display_humidifier_bars():
         pct_available = 100.0 - pct_used
         pcts_available.append(pct_available)
         #log_message("humidifier %d: pct_available = %.3f" % ( i, pct_available))
-        
+
         # calculate bar height (y_max)
         height = int(float(HALF_HEIGHT) * pct_available / 100.0)
-        
+
         # determine x_min, x_max and pen color
         if humidifiers[i]["setting"] == "hi":
             x_min = HI_X_MIN[i]
@@ -425,11 +430,11 @@ def display_humidifier_bars():
             pen = YELLOW
         else:
             pen = GREEN
-        
+
         # draw the rectangle
         display.set_pen(pen)
         display.rectangle(x_min, HEIGHT - height, x_max - x_min, height)
-        
+
         # if energized, draw the blue lightning
         if humidifiers[i]["energized"]:
             display.set_pen(BLUE)
@@ -444,14 +449,14 @@ def display_humidifier_bars():
 
     display.update()
 #
-#######################################################
-########### END HUMIDIFIER BARS SCREEN ################
-#######################################################
+##############################################################################################################
+########### END HUMIDIFIER BARS SCREEN #######################################################################
+##############################################################################################################
 
 
-#######################################################
-############## BEGIN ACTIONS ##########################
-#######################################################
+##############################################################################################################
+############## BEGIN ACTIONS #################################################################################
+##############################################################################################################
 #
 # Update relay settings for each humidifier based on whether its outlet is energized
 # Turn on or off the outlet's GPIO pin to control the outlet's relay
@@ -543,7 +548,7 @@ def determine_needed_humidifying():
 # Choose which humidifier to use for light humidifying
 #
 def choose_humidifiers_light():
-    
+
     # see what humidifiers are currently energized
     energized_lo = []
     energized_hi = []
@@ -562,25 +567,27 @@ def choose_humidifiers_light():
                 energized_hi.append({ "outlet" : i, "pct_used" : pct_used})
     log_message("choose_humidifiers_light found energized humidifiers: %d lo, %d hi, total humidifiers %d lo, %d hi" % (len(energized_lo), len(energized_hi), len(all_lo), len(all_hi)))
 
+    # sort energized_{lo|hi} and all_{lo|hi} by pct_used.  Least used is first in list
     energized_lo = sorted(energized_lo, key=lambda d: d['pct_used'])
     energized_hi = sorted(energized_hi, key=lambda d: d['pct_used'])
     all_lo = sorted(all_lo, key=lambda d: d['pct_used'])
     all_hi = sorted(all_hi, key=lambda d: d['pct_used'])
+
     log_message("light energized_lo = %s" % str(energized_lo))
     log_message("light energized_hi = %s" % str(energized_hi))
     log_message("light all_lo = %s" % str(all_lo))
     log_message("light all_hi = %s" % str(all_hi))
-    
+
     # if none are currently energized...
     if len(energized_lo) + len(energized_hi) == 0:
-        
-        # if any lo humidifiers, use the least used one if not error level
+
+        # if any lo humidifiers, use the least used one (first in list) if not error level
         if len(all_lo):
             if all_lo[0]["pct_used"] < (100.0 - ERROR_PCT):
                 log_message("light energizing lo humidifier %d" % all_lo[0]["outlet"])
                 energize_humidifier(humidifiers[all_lo[0]["outlet"]])
                 return
-        # no lo available, any hi
+        # no lo available, least used (first in list) hi
         if len(all_hi):
             if all_hi[0]["pct_used"] < (100 - ERROR_PCT):
                 log_message("light energizing hi humidifier %d" % all_hi[0]["outlet"])
@@ -588,24 +595,48 @@ def choose_humidifiers_light():
                 return
         # no non-error humidifiers.  Energize any humidifiers
         if len(all_lo):
-            log_message("light desparately energizing lo humidifier %d at %.3f pct used" % (all_lo[0]["outlet"], all_lo[0]["pct_used"]))
+            log_message("light desparately energizing lo humidifier %d at %.3f%% used" % (all_lo[0]["outlet"], all_lo[0]["pct_used"]))
             energize_humidifier(humidifiers[all_lo[0]["outlet"]])
             return
         if len(all_hi):
-            log_message("light desparately energizing hi humidifier %d at %.3f pct used" % (all_hi[0]["outlet"], all_hi[0]["pct_used"]))
+            log_message("light desparately energizing hi humidifier %d at %.3f%% used" % (all_hi[0]["outlet"], all_hi[0]["pct_used"]))
             energize_humidifier(humidifiers[all_hi[0]["outlet"]])
             return
-        
+
         # NO humidifier available - but need one!  Set the led
         led_red(bright=True)
         log_message("NO HUMIDIFIER AVAILALBE!!!")
         return
-    
-    # is one lo already on and healthy?
-    if len(energized_lo) == 1 and len(energized_hi) == 0 and energized_lo[0]["pct_used"] < (100.0 - ERROR_PCT):
-        log_message("light continuing to use lo humidifier %d" % energized_lo[0]["outlet"])
-        return
-    
+
+    # is one lo and only one lo already on?
+    if len(energized_lo) == 1 and len(energized_hi) == 0:
+
+        # Is this is the only lo?
+        if len(all_lo) == 1:
+            # if not in error range, stick with this one - otherwise fall through to choosing another
+            if energized_lo[0]["pct_used"] < (100.0 - ERROR_PCT):
+                log_message("light continuing to use lo humidifier %d" % energized_lo[0]["outlet"])
+                return
+
+        # there are more than one lo humidifiers
+        else:
+            # get the index of the least used lo that is not the energized one
+            if all_lo[0]["outlet"] == energized_lo[0]["outlet"]:
+                least_ne_lo_index = 1
+            else:
+                least_ne_lo_index = 0
+            # if the least used is more than SWITCH_PCT above current one, switch to it
+            # unused at 40% used, energized at 70% used
+            if (energized_lo[0]["pct_used"] - all_lo[least_ne_lo_index]["pct_used"]) > SWITCH_PCT:
+                # switch lo humidifiers
+                log_message("light switching from lo[%d] at %.1f%% used to lo[%d] at %.1f%% used" % (energized_lo[0]["outlet"], energized_lo[0]["pct_used"], all_lo[least_ne_lo_index]["outlet"], all_lo[least_ne_lo_index]["pct_used"]))
+                deenergize_humidifier(humidifiers[energized_lo[0]["outlet"]])
+                energize_humidifier(humidifiers[all_lo[least_ne_lo_index]["outlet"]])
+                return
+            # not worth switching yet, continue with current one
+            log_message("light continuing to use lo humidifier %d" % energized_lo[0]["outlet"])
+            return
+
     # choose from scratch!
     # de-energize all and we'll energize the one we want to use
     for i in range(len(humidifiers)):
@@ -631,7 +662,7 @@ def choose_humidifiers_light():
         log_message("light desparately energizing hi humidifier %d at %.3f pct used" % (all_hi[0]["outlet"], all_hi[0]["pct_used"]))
         energize_humidifier(humidifiers[all_hi[0]["outlet"]])
         return
-        
+
     # NO humidifier available - but need one!  Set the led
     led_red(bright=True)
     log_message("NO HUMIDIFIER AVAILALBE!!!")
@@ -641,7 +672,7 @@ def choose_humidifiers_light():
 # For heavy, energize all humidifiers
 #
 def choose_humidifiers_heavy():
-    
+
     for i in range(len(humidifiers)):
         if not humidifiers[i]["energized"]:
             if humidifiers[i]["setting"] != "off":
@@ -668,14 +699,14 @@ def automate_energizing():
             humidifying = "off"
             for i in range(len(humidifiers)):
                 deenergize_humidifier(humidifiers[i])
-    
+
     elif needed_humidifying == "light":
         choose_humidifiers_light()
         humidifying = "light"
     else:
         choose_humidifiers_heavy()
         humidifying = "heavy"
-    
+
 
 
 #
@@ -697,14 +728,14 @@ def humidifier_setting(humidifier, new_setting):
     humidifier["last_setting_time"] = time.time()
     humidifier["setting"] = new_setting
 #
-#######################################################
-############### END ACTIONS ###########################
-#######################################################
+##############################################################################################################
+############### END ACTIONS ##################################################################################
+##############################################################################################################
 
 
-#######################################################
-############### BEGIN MENU ###########################$
-#######################################################
+##############################################################################################################
+############### BEGIN MENU ###################################################################################
+##############################################################################################################
 #
 # Setup button handling
 #
@@ -795,7 +826,7 @@ def draw_menu_entry(entry, menu_entry_rect, is_selected):
     x_start = menu_entry_rect["x_max"] - text_width - 1
     display.text(entry["text"], x_start, y_midline, scale = MENU_TEXT_SCALE)
     display.remove_clip()
-    
+
 
 #
 # Display a list of menu entries
@@ -814,10 +845,10 @@ def show_menu_entries(entries, menu_selection):
         top_entry = menu_selection - len(MENU_ENTRY_RECTS) + 1
     else:
         top_entry = 0
-    
+
     # display each entry
     for i in range(len(MENU_ENTRY_RECTS)):
-        if top_entry + i < len(entries):    
+        if top_entry + i < len(entries):
             draw_menu_entry(entries[top_entry + i], MENU_ENTRY_RECTS[i], menu_selection == top_entry + i)
     # update the display
     display.update()
@@ -830,15 +861,15 @@ def show_menu_entries(entries, menu_selection):
 def show_setting(value):
     display.set_pen(BLACK)
     display.clear()
-    
+
     display.set_pen(RED)
     display.set_font("sans")
     text_width = display.measure_text(str(value), NUMBER_SCALE)
     x_start = int( HALF_WIDTH - (text_width/2))
     display.text(str(value), x_start, HALF_HEIGHT, scale = NUMBER_SCALE)
     display.update()
-    
-    
+
+
 def can_adjust(which_one, rh_value, min_value, max_value, direction):
     global on_rh
     global low_rh
@@ -863,21 +894,21 @@ def choose_RH(which_one, min_value, max_value):
     global last_button_press_secs
     global on_rh
     global low_rh
-    
+
     keep_processing = True
     rh_value = 0
     if which_one == "on":
         rh_value = on_rh
     else:
         rh_value = low_rh
-    
+
     # clear a button press
     time.sleep(0.1)
     a_pressed = False
-    
+
     while keep_processing:
         show_setting(rh_value)
-        
+
         if a_pressed:
             if which_one == "on":
                 on_rh = rh_value
@@ -888,14 +919,14 @@ def choose_RH(which_one, min_value, max_value):
             last_button_press_secs = time.time()
             a_pressed = False
             return True
-            
+
         if b_pressed:
             # update last button press time
             time.sleep(0.1)
             last_button_press_secs = time.time()
             b_pressed = False
             return True
-            
+
         if x_pressed:
             if can_adjust(which_one, rh_value, min_value, max_value, "up"):
                 rh_value = rh_value + 1
@@ -916,7 +947,7 @@ def choose_RH(which_one, min_value, max_value):
         if time.time() - last_button_press_secs > MENU_IDLE_SECS_EXIT:
             return False
 
-    
+
 #
 # Display the code version
 #
@@ -926,40 +957,40 @@ def show_version():
     global x_pressed
     global y_pressed
     global last_button_press_secs
-    
+
     keep_processing = True
-    
+
     # Show the version string
     display.set_pen(BLACK)
     display.clear()
-    
+
     display.set_pen(RED)
     display.set_font("sans")
     text_width = display.measure_text(VERSION, VERSION_SCALE)
     x_start = int( HALF_WIDTH - (text_width/2))
     display.text(VERSION, x_start, HALF_HEIGHT, scale = VERSION_SCALE)
     display.update()
-    
+
     # clear a button press
     time.sleep(0.1)
     a_pressed = False
-    
+
     while keep_processing:
-        
+
         if a_pressed:
             # update last button press time
             time.sleep(0.1)
             last_button_press_secs = time.time()
             a_pressed = False
             return True
-            
+
         if b_pressed:
             # update last button press time
             time.sleep(0.1)
             last_button_press_secs = time.time()
             b_pressed = False
             return True
-            
+
         if x_pressed:
             # update last button press time
             time.sleep(0.1)
@@ -976,7 +1007,7 @@ def show_version():
         if time.time() - last_button_press_secs > MENU_IDLE_SECS_EXIT:
             return False
 
-    
+
 def enter_menu(current_menu, menu_context):
     global a_pressed
     global b_pressed
@@ -991,14 +1022,14 @@ def enter_menu(current_menu, menu_context):
     b_pressed = False
     x_pressed = False
     y_pressed = False
-    
+
     menu_selection = 0
 
     last_button_press_secs = time.time()
-    
+
     while stay_in_menu:
         menu_selection = show_menu_entries(current_menu, menu_selection)
-        
+
         if a_pressed:
             action = current_menu[menu_selection]["action"]
             if action == "humidifier_off":
@@ -1070,7 +1101,7 @@ def enter_menu(current_menu, menu_context):
             time.sleep(0.1)
             last_button_press_secs = time.time()
             y_pressed = False
-            
+
         else:
             a_pressed = False
             b_pressed = False
@@ -1080,17 +1111,17 @@ def enter_menu(current_menu, menu_context):
         time.sleep(0.1)
         if time.time() - last_button_press_secs > MENU_IDLE_SECS_EXIT:
             break
-        
+
     return
 #
-#######################################################
-################ END MENU #############################
-#######################################################
+##############################################################################################################
+################ END MENU ####################################################################################
+##############################################################################################################
 
 
-#######################################################
-################ BEGIN RH #############################
-#######################################################
+##############################################################################################################
+################ BEGIN RH ####################################################################################
+##############################################################################################################
 #
 # Reads the current RH from the sensor.  It does the following FOR EACH READING
 #   Powers on the sensor
@@ -1105,7 +1136,7 @@ def read_humidity():
 
     humidity_total = 0.0
     humidity_count = 0
-    
+
     # average 5 readings a second apart
     for i in range(0, RH_SAMPLES_PER_READ):
         log_message("reading sample %d" % i)
@@ -1149,13 +1180,13 @@ def read_humidity():
         sensor_power_pin.value(0)
         if LED_TRACK_SENSOR:
             clear_led()
-        
+
         humidity_total = humidity_total + humidity
         humidity_count = humidity_count + 1
         if humidity_count < RH_SAMPLES_PER_READ:
             #log_message("sleeping between RH readings")
             time.sleep(1)
-    
+
     humidity = humidity_total / humidity_count
     log_message("reporting humidify of %.4f" % humidity)
     if LED_TRACK_SENSOR:
@@ -1172,7 +1203,9 @@ def fake_rh():
     global rh_trend
     global should_refresh_display
 
-    log_message("Faking humidity...")
+    if current_rh == 0.0:
+        current_rh = fake_rh_low
+
     if fake_rh_ascending:
         if current_rh >= fake_rh_hi:
             fake_rh_ascending = False
@@ -1181,7 +1214,7 @@ def fake_rh():
         else:
             current_rh = current_rh + fake_rh_step
             rh_trend = 1
-        
+
     else: #descending
         if current_rh <= fake_rh_low:
             fake_rh_ascending = True
@@ -1191,7 +1224,7 @@ def fake_rh():
             current_rh = current_rh - fake_rh_step
             rh_trend = -1
     record_rh(current_rh)
-    log_message("RH now %.1f" % current_rh)        
+    log_message("Faking humidity. RH now %.1f" % current_rh)
     should_refresh_display = True
 
 
@@ -1200,10 +1233,14 @@ def fake_rh():
 #
 def record_rh(rh):
     global prev_rh_readings
-    
+    global humidifying
+
     for i in range(0, len(prev_rh_readings) - 1):
         prev_rh_readings[i] = prev_rh_readings[i+1]
-    prev_rh_readings[len(prev_rh_readings)-1] = rh
+    this_rh = {}
+    this_rh["reading"] = rh
+    this_rh["humidifying"] = humidifying
+    prev_rh_readings[len(prev_rh_readings)-1] = this_rh
 
 
 #
@@ -1211,7 +1248,7 @@ def record_rh(rh):
 #
 def calculate_rh_trend():
     global prev_rh_readings
-    
+
     # calculate average of the olde readings
     older_sum = 0
     older_count = 0
@@ -1225,7 +1262,7 @@ def calculate_rh_trend():
         return 0
     # calculate the average
     older_avg = older_sum / older_count
-        
+
     # calculate average of the newest 4 readings
     newest_sum = 0
     newest_count = 0
@@ -1235,7 +1272,7 @@ def calculate_rh_trend():
             newest_count = newest_count + 1
     # calculate the average
     newest_avg = newest_sum / newest_count
-    
+
     # based the trend on the differences between the averages
     trend_delta = newest_avg - older_avg
     if trend_delta < -0.2:
@@ -1274,21 +1311,21 @@ def update_rh():
             time.sleep(1)
 
     record_rh(current_rh)
-    
+
     rh_trend = calculate_rh_trend()
     log_message("RH now %.2f, trend %d" % (current_rh, rh_trend))
-        
+
     should_refresh_display = True
 #
-#######################################################
-################# END RH ##############################
-#######################################################
+##############################################################################################################
+################# END RH #####################################################################################
+##############################################################################################################
 
 
 # Draw the heartbeat circle in either black or blue to blink heartbeat circle
 def toggle_heartbeat():
     global heartbeat_on
-    
+
     if heartbeat_on:
         display.set_pen(BLACK)
     else:
@@ -1329,7 +1366,7 @@ time.sleep(1)
 
 try:
     while True:
-        
+
         # If a is pressed, enter the menu
         if a_pressed:
             led_red()
@@ -1374,7 +1411,7 @@ try:
 
         # don't spin too fast
         time.sleep(0.1)
-    
+
 except BaseException as err:
     display_error_text(f"Unexpected {err=}, {type(err)=}")
     sys.print_exception(err)
