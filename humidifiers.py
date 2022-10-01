@@ -1253,8 +1253,8 @@ def calculate_rh_trend():
     older_sum = 0
     older_count = 0
     for i in range(len(prev_rh_readings) - RH_READINGS_TO_TREND * 2, len(prev_rh_readings) - RH_READINGS_TO_TREND):
-        if prev_rh_readings[i] > 0:
-            older_sum = older_sum + prev_rh_readings[i]
+        if prev_rh_readings[i]["reading"] > 0:
+            older_sum = older_sum + prev_rh_readings[i]["reading"]
             older_count = older_count + 1
     # if there aren't older readings, consider it level trend
     if older_count == 0:
@@ -1267,8 +1267,8 @@ def calculate_rh_trend():
     newest_sum = 0
     newest_count = 0
     for i in range(len(prev_rh_readings) - RH_READINGS_TO_TREND, len(prev_rh_readings)):
-        if prev_rh_readings[i] > 0:
-            newest_sum = newest_sum + prev_rh_readings[i]
+        if prev_rh_readings[i]["reading"] > 0:
+            newest_sum = newest_sum + prev_rh_readings[i]["reading"]
             newest_count = newest_count + 1
     # calculate the average
     newest_avg = newest_sum / newest_count
