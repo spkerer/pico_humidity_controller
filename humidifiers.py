@@ -11,7 +11,7 @@ from pimoroni import RGBLED
 ###############################################################################
 # Constants
 #
-VERSION = "1.0.3"
+VERSION = "1.0.4"
 
 
 # Overall settings
@@ -63,6 +63,7 @@ HEARTBEAT_Y = int(HEARTBEAT_CIRCLE_SIZE / 2) + 1 # Y coordinate of center of hea
 MIN_RH_PLOT_PCT = 45                             # Min RH of background line graph behind displayed RH value
 MAX_RH_PLOT_PCT = 75                             # Max RH of background line graph behind displayed RH value
 RH_SCALE        = 1.5                            # Scaling factor for text displaying RH value
+REMAIN_SCALE    = 0.75                           # Scaling factor for pct remaining for each humidifier
 
 MAX_SECONDS_AT_HI      = 11 * 60 * 60 + 45 * 60  # 11h 45m
 MAX_SECONDS_AT_LO      = 23 * 60 * 60 + 45 * 60  # 23h 45m
@@ -434,6 +435,17 @@ def display_humidifier_bars():
         # draw the rectangle
         display.set_pen(pen)
         display.rectangle(x_min, HEIGHT - height, x_max - x_min, height)
+
+        # show the pct_available on the bar
+        bar_center_x = x_min + (x_max - x_min) / 2
+        avail_text = "%.0f" % pct_available
+        display.set_pen(WHITE)
+        display.set_font("sans")
+        text_width = display.measure_text(avail_text, REMAIN_SCALE)
+        x_start = int(bar_center_x - text_width/2)
+        y_midline = 100
+        display.text(avail_text, x_start, y_midline, scale = REMAIN_SCALE)
+
 
         # if energized, draw the blue lightning
         if humidifiers[i]["energized"]:
