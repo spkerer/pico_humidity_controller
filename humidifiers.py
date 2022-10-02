@@ -34,7 +34,8 @@ ERROR_PCT        = 10.0   # When a humidifier is this % or less full, show its b
 
 LED_TRACK_SENSOR = False  # When true, light leds to track sensor interactions
 
-# Set to fake RH
+# Set to fake RH and/or accelerate humidifier use
+FAKE_USE = False
 FAKE_RH = False
 if FAKE_RH:
     RH_UPDATE_SECS = 7
@@ -354,22 +355,21 @@ def display_humidifier_bars():
     # Include a "tick" (additional pixels) at every TICK_INTERVAL - which if set correctly should align with each hour back
     since_tick = 0
     draw_tick = False
-    for i in range(0, WIDTH):
+    for i in range(WIDTH - 1, 0, -1):
         if since_tick >= TICK_INTERVAL:
             draw_tick = True
             since_tick = 0
         else:
             since_tick = since_tick + 1
-        reading_index = WIDTH - i - 1
-        if prev_rh_readings[reading_index]["reading"] > 0:
-            display.set_pen(PREV_RH_GRAPH_COLORS[prev_rh_readings[reading_index]["humidifying"]])
-            display.pixel(i, calculate_RH_y(prev_rh_readings[reading_index]["reading"], HALF_HEIGHT - 10))
+        if prev_rh_readings[i]["reading"] > 0:
+            display.set_pen(PREV_RH_GRAPH_COLORS[prev_rh_readings[i]["humidifying"]])
+            display.pixel(i, calculate_RH_y(prev_rh_readings[i]["reading"], HALF_HEIGHT - 10))
             if draw_tick:
                 display.set_pen(YELLOW)
                 display.pixel(i, 0)
                 display.pixel(i, 1)
-                display.pixel(i, calculate_RH_y(prev_rh_readings[reading_index]["reading"], HALF_HEIGHT - 10)+2)
-                display.pixel(i, calculate_RH_y(prev_rh_readings[reading_index]["reading"], HALF_HEIGHT - 10)-2)
+                display.pixel(i, calculate_RH_y(prev_rh_readings[i]["reading"], HALF_HEIGHT - 10)+2)
+                display.pixel(i, calculate_RH_y(prev_rh_readings[i]["reading"], HALF_HEIGHT - 10)-2)
                 display.pixel(i, HALF_HEIGHT - 10)
                 display.pixel(i, HALF_HEIGHT - 11)
                 draw_tick = False
@@ -1392,12 +1392,13 @@ try:
             update_rh()
             last_rh_update_time = time.time()
 
-        # fake humidifier use
-        #for i in range(len(humidifiers)):
-        #    fake_humidifier_use(humidifiers[i])
-        #    pct_used = calculate_pct_used(humidifiers[i])
-        #    if pct_used >= 100.0:
-        #        humidifier_refilled(humidifiers[i])
+        # fake humidifier use if set
+        if FAKE_USE:
+            for i in range(len(humidifiers)):
+                fake_humidifier_use(humidifiers[i])
+                pct_used = calculate_pct_used(humidifiers[i])
+                if pct_used >= 100.0:
+                    humidifier_refilled(humidifiers[i])
 
         # automate
         if time.time() - last_automate_time > AUTOMATE_SECS:
