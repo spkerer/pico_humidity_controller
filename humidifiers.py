@@ -11,7 +11,7 @@ from pimoroni import RGBLED
 ###############################################################################
 # Constants
 #
-VERSION = "1.0.4"
+VERSION = "1.0.5"
 
 
 # Overall settings
@@ -436,15 +436,16 @@ def display_humidifier_bars():
         display.set_pen(pen)
         display.rectangle(x_min, HEIGHT - height, x_max - x_min, height)
 
-        # show the pct_available on the bar
-        bar_center_x = x_min + (x_max - x_min) / 2
-        avail_text = "%.0f" % pct_available
-        display.set_pen(WHITE)
-        display.set_font("sans")
-        text_width = display.measure_text(avail_text, REMAIN_SCALE)
-        x_start = int(bar_center_x - text_width/2)
-        y_midline = 100
-        display.text(avail_text, x_start, y_midline, scale = REMAIN_SCALE)
+        # show the pct_available on the bar if humidifier not "off"
+        if humidifiers[i]["setting"] != "off":
+            bar_center_x = x_min + (x_max - x_min) / 2
+            avail_text = "%.0f" % pct_available
+            display.set_pen(WHITE)
+            display.set_font("sans")
+            text_width = display.measure_text(avail_text, REMAIN_SCALE)
+            x_start = int(bar_center_x - text_width/2)
+            y_midline = 100
+            display.text(avail_text, x_start, y_midline, scale = REMAIN_SCALE)
 
 
         # if energized, draw the blue lightning
@@ -498,10 +499,9 @@ def update_humidifier_usage(humidifier):
     log_message("Updating usage for humidifier %d" % humidifier["outlet"])
     if humidifier["energized"] and humidifier["setting"] == "lo":
         humidifier["lo_secs"] = humidifier["lo_secs"] + time.time() - humidifier["last_setting_time"]
-        humidifier["last_setting_time"] = time.time()
     elif humidifier["energized"] and humidifier["setting"] == "hi":
         humidifier["hi_secs"] = humidifier["hi_secs"] + time.time() - humidifier["last_setting_time"]
-        humidifier["last_setting_time"] = time.time()
+    humidifier["last_setting_time"] = time.time()
 
 
 #
