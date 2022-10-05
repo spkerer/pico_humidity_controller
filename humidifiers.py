@@ -11,7 +11,7 @@ from pimoroni import RGBLED
 ###############################################################################
 # Constants
 #
-VERSION = "1.0.5"
+VERSION = "1.0.6"
 
 
 # Overall settings
@@ -432,8 +432,13 @@ def display_humidifier_bars():
         else:
             pen = GREEN
 
-        # draw the rectangle
+        # draw the outline and the rectangle
         display.set_pen(pen)
+        display.line(x_min,      HEIGHT, x_min, HALF_HEIGHT)
+        display.line(x_min, HALF_HEIGHT, x_max, HALF_HEIGHT)
+        display.line(x_max, HALF_HEIGHT, x_max,      HEIGHT)
+        display.line(x_max,      HEIGHT, x_min,      HEIGHT)
+
         display.rectangle(x_min, HEIGHT - height, x_max - x_min, height)
 
         # show the pct_available on the bar if humidifier not "off"
