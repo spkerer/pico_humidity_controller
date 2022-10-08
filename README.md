@@ -68,3 +68,25 @@ The height of the bar also shows capacity remaining.
 
 A lightning bolt on the bar indicates that humidifier is currently energized.
 In the image, all three humidifiers are energized.
+
+<b>Menu</b>
+
+The menu is navigated using the 4 buttons on the display - A, B, X and Y.
+They perform the following functions:
+* A - enter menu or select item
+* B - return up a level in the menu
+* X - up
+* Y - down
+
+The menus are:
+
+Main Menu
+* Refill - select to indicate the humidifier tanks have been refilled
+* Humidifier 1 2 or 3
+* * OFF - humidifier is switched off
+* * LO - humidifier is set to Low
+* * HI - humidifier is set to High
+* RH Settings
+* * ON RH% - adjust the On relative humidity threshold
+* * LOW RH% - adjust the Low relative humidity threshold
+* Version - show the microcode version running
