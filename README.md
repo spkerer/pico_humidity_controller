@@ -37,7 +37,7 @@ All humidifiers will remain energized until the humidity level rises above the L
 
 <b>Display</b>
 
-<img src="IMG_4955.JPG" width=400>
+<img src="humidifier_display.jpg" width=400>
 
 Here is a description of the display.
 
@@ -47,9 +47,9 @@ Upper left corner shows a flashing ball.  It flashes at one of 3 speeds:
 * every half second means the humidity is below the Low threshold, so heavy humidifying is occurring.
 
 The upper half of the display shows the current relative humidity (54.9% in the image), followed by a trend arrow.
-* up arrow indicates the humidity is rising (shown in the image)
+* up arrow indicates the humidity is rising
 * level arrow indicates the humidity is steady
-* down arrow indicates the humidity is falling
+* down arrow indicates the humidity is falling (shown in image)
 
 Behind the relative humidity display is a line giving historical humidity readings.
 There are tick marks indicating every 2 hours.
@@ -59,10 +59,10 @@ The color of the line indicates:
 * red - heavy humidifying occurring
 
 The lower half of the display shows the three humidifiers.
-A wide bar (47 in the image) is a humidifier set to High and a skinny bar (15 and 8 in the image) is a humidifier set to Low.
+A wide bar (83 in the image) is a humidifier set to High and a skinny bar (22 and 8 in the image) is a humidifier set to Low.
 The color of the bar indicates:
-* green - greater than 30% capacity remaining (47 in the image)
-* yellow - between 10% and 30% capacity remaining (15 in the image)
+* green - greater than 30% capacity remaining (83 in the image)
+* yellow - between 10% and 30% capacity remaining (22 in the image)
 * red - less than 10% capacity remaining (8 in the image)
 The height of the bar also shows capacity remaining.
 
