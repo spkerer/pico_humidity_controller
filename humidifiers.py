@@ -1,6 +1,7 @@
 # 3 humidifier controller
 
 import machine
+import os
 import sys
 import time
 from dht20 import DHT20
@@ -11,7 +12,7 @@ from pimoroni import RGBLED
 ###############################################################################
 # Constants
 #
-VERSION = "1.0.6"
+VERSION = "1.0.7"
 
 
 # Overall settings
@@ -32,12 +33,17 @@ SWITCH_PCT       = 20.0   # When running a single lo humidifier, swtich if anoth
 WARN_PCT         = 30.0   # When a humidifier is this % or less full, show its bar yellow.  If on low and one is available, switch to another lo humidifier
 ERROR_PCT        = 10.0   # When a humidifier is this % or less full, show its bar red.
 
+LOGFILE_BASENAME      = "humidifier.log"
+MAX_LOGFILE_LINES     = 2000
+LOGFILE_GENERATIONS   = 3
+
 LED_TRACK_SENSOR = False  # When true, light leds to track sensor interactions
 
 # Set to fake RH and/or accelerate humidifier use
 FAKE_USE = False
 FAKE_RH = False
 if FAKE_RH:
+    import random
     RH_UPDATE_SECS = 7
 
 
@@ -173,6 +179,9 @@ humidifiers = [ { "setting" : "lo",
 last_button_press_secs = 0          # time of the last button press - used for menu idle timeout
 last_button_ms = time.ticks_ms()    # ms resolution time of last button press - used for de-bouncing buttons
 heartbeat_on = False                # indicator of whether the heartbeat circle is currently shown or not - gets toggled at heartbeat interval
+logfile = None
+logfile_lines_written = 0
+logfile_generation = 0
 
 
 ######## FAKE RH ######################################################################################
@@ -188,10 +197,70 @@ fake_rh_low = 48.0        # When fake RH is below this, start ascending fake RH
 ################# BEGIN LOGGER ###############################################################################
 ##############################################################################################################
 #
+# rotate from the current logfile to LOGFILE_BASENAME.<generation+1> and increment the generation.
+# If there are enough generations, delete the logfile that just became too many generations old.
+#
+def rotate_logfile():
+    global logfile
+    global logfile_generation
+
+    # close existing logfile
+    logfile.close()
+    logfile = None
+
+    # advance the generation
+    logfile_generation = logfile_generation + 1
+
+    # if too many generations, delete oldest logfile
+    if logfile_generation >= LOGFILE_GENERATIONS:
+        try:
+            os.remove("%s.%d" % (LOGFILE_BASENAME, logfile_generation - LOGFILE_GENERATIONS))
+        except err:
+            print("Unable to remove old logfile.  Continuing...")
+
+#
+# Ensure that the logfile is open.
+# If it needs to be rotated, rotate it.
+#
+def ensure_logfile_open():
+    global logfile
+    global logfile_lines_written
+    global logfile_generation
+
+    # if at max lines per logfile, rotate logfile
+    if logfile and logfile_lines_written >= MAX_LOGFILE_LINES:
+        rotate_logfile()
+
+    # if logfile is not open, open it
+    if not logfile:
+        logfile = open("%s.%d" % (LOGFILE_BASENAME, logfile_generation), "w")
+        if logfile_generation == 0:
+            # have first file only take 100 lines since it is likely to get overwritten when plugging in pico
+            logfile_lines_written = MAX_LOGFILE_LINES - 100
+        else:
+            logfile_lines_written = 0
+
+#
+# Write a message to the log file.
+# Also write it to the console in case it is being viewed.
+#
 def log_message(message):
+    global logfile
+    global logfile_lines_written
+
+    # get for timestamping log messages
     year, month, day, hour, minute, second, micro, milli = time.localtime()
 
-    print("%02d:%02d:%02d %s" % (hour, minute, second, message))
+    # open logfile if not already open
+    ensure_logfile_open()
+
+    full_message = "%02d:%02d:%02d %s" % (hour, minute, second, message)
+    # to console
+    print(full_message)
+    # to logfile
+    logfile.write(full_message + "\n")
+    logfile_lines_written = logfile_lines_written + 1
+    logfile.flush()
 ##############################################################################################################
 ################## END LOGGER ################################################################################
 ##############################################################################################################
@@ -260,6 +329,7 @@ sensor_power_pin = machine.Pin(HMIDITY_SENSOR_POWER_PIN_NUMBER, machine.Pin.OUT)
 # Display the error text on the display
 #
 def display_error_text(error_text):
+    print("ERROR TEXT: " + error_text)
     log_message("ERROR TEXT: " + error_text)
     display.set_pen(RED)
     display.set_font("bitmap6")
@@ -376,7 +446,7 @@ def display_humidifier_bars():
 
     # show the current RH as a number and percent sign
     rh_text = "%.1f%%" % current_rh
-    display.set_pen(RED)
+    display.set_pen(WHITE)
     display.set_font("sans")
     text_width = display.measure_text(rh_text, RH_SCALE)
     x_start = HALF_WIDTH - int(text_width/2)
@@ -590,10 +660,10 @@ def choose_humidifiers_light():
     all_lo = sorted(all_lo, key=lambda d: d['pct_used'])
     all_hi = sorted(all_hi, key=lambda d: d['pct_used'])
 
-    log_message("light energized_lo = %s" % str(energized_lo))
-    log_message("light energized_hi = %s" % str(energized_hi))
-    log_message("light all_lo = %s" % str(all_lo))
-    log_message("light all_hi = %s" % str(all_hi))
+    #log_message("light energized_lo = %s" % str(energized_lo))
+    #log_message("light energized_hi = %s" % str(energized_hi))
+    #log_message("light all_lo = %s" % str(all_lo))
+    #log_message("light all_hi = %s" % str(all_hi))
 
     # if none are currently energized...
     if len(energized_lo) + len(energized_hi) == 0:
@@ -1217,32 +1287,28 @@ def fake_rh():
     global fake_rh_hi
     global fake_rh_low
     global current_rh
-    global rh_trend
-    global should_refresh_display
 
     if current_rh == 0.0:
-        current_rh = fake_rh_low
+        current_rh = (fake_rh_hi + fake_rh_low) / 2
 
     if fake_rh_ascending:
         if current_rh >= fake_rh_hi:
             fake_rh_ascending = False
-            rh_trend = 0
-            current_rh = current_rh - fake_rh_step
+            delta = random.randint(-100,50)
         else:
-            current_rh = current_rh + fake_rh_step
-            rh_trend = 1
+            delta = random.randint(-50,100)
 
     else: #descending
         if current_rh <= fake_rh_low:
             fake_rh_ascending = True
-            rh_trend = 0
-            current_rh = current_rh + fake_rh_step
+            delta = random.randint(-50,100)
         else:
-            current_rh = current_rh - fake_rh_step
-            rh_trend = -1
-    record_rh(current_rh)
-    log_message("Faking humidity. RH now %.1f" % current_rh)
-    should_refresh_display = True
+            delta = random.randint(-100,50)
+
+    return_rh = current_rh + (float(delta) / 100.0)
+
+    log_message("Faking humidity. RH now %.2f" % return_rh)
+    return return_rh
 
 
 #
@@ -1311,21 +1377,22 @@ def update_rh():
     global should_refresh_display
 
     if FAKE_RH:
-        fake_rh()
-        return
+        current_rh = fake_rh()
 
-    log_message("Reading humidity from sensor")
-    successful_read = False
-    while not successful_read:
-        try:
-            log_message("Attempting read")
-            current_rh = read_humidity()
-            log_message("Successful read")
-            successful_read = True
-        except OSError as err:
-            log_message("OS error: {0}".format(err))
-            log_message("##### Exception reading humidity.")
-            time.sleep(1)
+    else:
+
+        log_message("Reading humidity from sensor")
+        successful_read = False
+        while not successful_read:
+            try:
+                log_message("Attempting read")
+                current_rh = read_humidity()
+                log_message("Successful read")
+                successful_read = True
+            except OSError as err:
+                log_message("OS error: {0}".format(err))
+                log_message("##### Exception reading humidity.")
+                time.sleep(1)
 
     record_rh(current_rh)
 
