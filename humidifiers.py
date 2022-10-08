@@ -19,15 +19,15 @@ VERSION = "1.0.7"
 #
 BAR_DISPLAY_SECS = 5      # How often to refresh the bar display screen
 RH_UPDATE_SECS   = 300    # How often to read the sensor to update relative humidity (RH)
-TICK_INTERVAL    = 24     # How often to draw ticks (longer bars) on RH plot.  Interval of 24 ticks with 300 second updates means a tick every two hours of data
+TICK_INTERVAL    = 36     # How often to draw ticks (longer bars) on RH plot.  Interval of 36 ticks with 300 second updates means a tick every 3 hours of data
 AUTOMATE_SECS    = 5      # How often to check whether the automation settings (relays) need updating
 
 OFF_HB_MS        = 2000   # How often to blink the heartbeat circle in the upper left corner when off
 LIGHT_HB_MS      = 1000   # How often to blink the heartbeat circle in the upper left corner when light humidifying
 HEAVY_HB_MS      =  500   # How often to blink the heartbeat circle in the upper left corner when heavy humidifying
 
-DEFAULT_ON_RH    = 60.0   # Turn on one low humidifier if RH drops below the ON threshold (default setting)
-DEFAULT_LOW_RH   = 54.0   # Turn on all humidifiers if RH drops below the LOW threshold (default setting)
+DEFAULT_ON_RH    = 56.0   # Turn on one low humidifier if RH drops below the ON threshold (default setting)
+DEFAULT_LOW_RH   = 50.0   # Turn on all humidifiers if RH drops below the LOW threshold (default setting)
 SWITCH_PCT       = 20.0   # When running a single lo humidifier, swtich if another is available with at least this pct more capacity left
 
 WARN_PCT         = 30.0   # When a humidifier is this % or less full, show its bar yellow.  If on low and one is available, switch to another lo humidifier
@@ -44,7 +44,7 @@ FAKE_USE = False
 FAKE_RH = False
 if FAKE_RH:
     import random
-    RH_UPDATE_SECS = 7
+    RH_UPDATE_SECS = 2
 
 
 # Main bar screen settings
@@ -168,7 +168,7 @@ humidifiers = [ { "setting" : "lo",
                   "lo_secs" : 0,
                   "hi_secs" : 0,
                   "outlet" : 1 },
-                { "setting" : "hi",
+                { "setting" : "off",
                   "energized" : False,
                   "filled_time" : 0,
                   "last_setting_time" : time.time(),
@@ -187,8 +187,8 @@ logfile_generation = 0
 ######## FAKE RH ######################################################################################
 fake_rh_ascending = True  # Is fake RH ascending (or descending)
 fake_rh_step = 0.2        # How much to step fake RH at each reading
-fake_rh_hi = 72.0         # When fake RH is above this, start descending fake RH
-fake_rh_low = 48.0        # When fake RH is below this, start ascending fake RH
+fake_rh_hi = 70.0         # When fake RH is above this, start descending fake RH
+fake_rh_low = 45.0        # When fake RH is below this, start ascending fake RH
 ######## FAKE RH ######################################################################################
 
 
@@ -435,7 +435,7 @@ def display_humidifier_bars():
             display.set_pen(PREV_RH_GRAPH_COLORS[prev_rh_readings[i]["humidifying"]])
             display.pixel(i, calculate_RH_y(prev_rh_readings[i]["reading"], HALF_HEIGHT - 10))
             if draw_tick:
-                display.set_pen(YELLOW)
+                display.set_pen(BLUE)
                 display.pixel(i, 0)
                 display.pixel(i, 1)
                 display.pixel(i, calculate_RH_y(prev_rh_readings[i]["reading"], HALF_HEIGHT - 10)+2)
