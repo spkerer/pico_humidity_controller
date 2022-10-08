@@ -61,10 +61,10 @@ The color of the line indicates:
 The lower half of the display shows the three humidifiers.
 A wide bar (47 in the image) is a humidifier set to High and a skinny bar (15 and 8 in the image) is a humidifier set to Low.
 The color of the bar indicates:
-* green - greater than 30% capacity remaining
-* yellow - between 10% and 30% capacity remaining
-* red - less than 10% capacity remaining
+* green - greater than 30% capacity remaining (47 in the image)
+* yellow - between 10% and 30% capacity remaining (15 in the image)
+* red - less than 10% capacity remaining (8 in the image)
 The height of the bar also shows capacity remaining.
 
 A lightning bolt on the bar indicates that humidifier is currently energized.
-To be completed.
+In the image, all three humidifiers are energized.
