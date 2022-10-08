@@ -90,3 +90,30 @@ Main Menu
 * * ON RH% - adjust the On relative humidity threshold
 * * LOW RH% - adjust the Low relative humidity threshold
 * Version - show the microcode version running
+
+<b>Components</b>
+* Raspberry Pi Pico
+* Pimoroni Display Pack
+* DHT22 Humidity & Temperature Sensor
+* 1N4007 diode - quantitiy 3
+* 2N3904 transistor - quantity 3
+* 220 ohm 1/4W resistor - quantity 6
+* LED of preferred color - quantity 3
+* DC 5V Coil SPDT 5 Pins Mini PCB Power Relay JQC 3FF T73-5P-5V-B - quantity 3
+* Micro-USB cable to power Pico
+* USB pigtail for providing 5V power to relays
+* Double USB power supply with shared ground
+* 120V ungrounded outlet - quantity 3
+* Packing of your choice to hold outlets (e.g. gang box)
+
+<b>Schematic</b>
+
+<img src="humidifier-controller.png">
+
+The right hand side of the schematic is simpler than it appears.
+The display mounts to the Pico pins, so the wiring occurs via that mount.
+
+The relay board has 3 sets of the resistors, transistors, diodes, LEDs and relays.
+
+For the mains power, the neutral (white) goes directly to the outlets.
+The hot (black) goes through the relays.
