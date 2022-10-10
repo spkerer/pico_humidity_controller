@@ -12,7 +12,7 @@ from pimoroni import RGBLED
 ###############################################################################
 # Constants
 #
-VERSION = "1.0.7"
+VERSION = "1.0.8"
 
 
 # Overall settings
@@ -28,7 +28,7 @@ HEAVY_HB_MS      =  500   # How often to blink the heartbeat circle in the upper
 
 DEFAULT_ON_RH    = 56.0   # Turn on one low humidifier if RH drops below the ON threshold (default setting)
 DEFAULT_LOW_RH   = 50.0   # Turn on all humidifiers if RH drops below the LOW threshold (default setting)
-SWITCH_PCT       = 20.0   # When running a single lo humidifier, swtich if another is available with at least this pct more capacity left
+SWITCH_PCT       = 10.0   # When running a single lo humidifier, swtich if another is available with at least this pct more capacity left
 
 WARN_PCT         = 30.0   # When a humidifier is this % or less full, show its bar yellow.  If on low and one is available, switch to another lo humidifier
 ERROR_PCT        = 10.0   # When a humidifier is this % or less full, show its bar red.
@@ -36,6 +36,9 @@ ERROR_PCT        = 10.0   # When a humidifier is this % or less full, show its b
 LOGFILE_BASENAME      = "humidifier.log"
 MAX_LOGFILE_LINES     = 2000
 LOGFILE_GENERATIONS   = 3
+
+RH_READINGS_TO_TREND       = 3   # How many RH readings to average for trending
+RH_READINGS_BETWEEN_TRENDS = 10  # How many readings gap between "then" and "now" for trending
 
 LED_TRACK_SENSOR = False  # When true, light leds to track sensor interactions
 
@@ -87,8 +90,6 @@ EVEN_ARROW_LINES = [ [ 5,  7,  8, 10 ],          # Line description for RH trend
                      [ 5, 13,  8, 10 ],          # Line description for RH trending EVEN line
                      [ 0, 10,  8, 10 ] ]         # Line description for RH trending EVEN line
 ARROW_HEIGHT = 20                                # Height of RH trend arrow
-
-RH_READINGS_TO_TREND = 5                         # How many RH readings to average for trending
 
 
 
@@ -187,7 +188,7 @@ logfile_generation = 0
 ######## FAKE RH ######################################################################################
 fake_rh_ascending = True  # Is fake RH ascending (or descending)
 fake_rh_step = 0.2        # How much to step fake RH at each reading
-fake_rh_hi = 70.0         # When fake RH is above this, start descending fake RH
+fake_rh_hi = 60.0         # When fake RH is above this, start descending fake RH
 fake_rh_low = 45.0        # When fake RH is below this, start ascending fake RH
 ######## FAKE RH ######################################################################################
 
@@ -632,6 +633,23 @@ def determine_needed_humidifying():
 
 
 #
+# True if the the pick of humidifier to use is lo, or False for should use hi one
+#
+def potential_use_lo_other_humidifier(all_lo, all_hi):
+    # is there a lo and the least_used lo is not error?  Choose it
+    if len(all_lo) > 0 and all_lo[0]["pct_used"] < (100.0 - ERROR_PCT):
+        return True
+    # then is there a hi and the last used hi is not error?  Choose it
+    if len(all_hi) > 0 and all_hi[0]["pct_used"] < (100.0 - ERROR_PCT):
+        return False
+    # only humidifiers in ERROR state, pick lo if exists
+    if len(all_lo) > 0:
+        return True
+    else:
+        return False
+
+
+#
 # Choose which humidifier to use for light humidifying
 #
 def choose_humidifiers_light():
@@ -696,33 +714,63 @@ def choose_humidifiers_light():
         return
 
     # is one lo and only one lo already on?
-    if len(energized_lo) == 1 and len(energized_hi) == 0:
+    if len(energized_lo) + len(energized_hi) == 1:
 
-        # Is this is the only lo?
-        if len(all_lo) == 1:
-            # if not in error range, stick with this one - otherwise fall through to choosing another
-            if energized_lo[0]["pct_used"] < (100.0 - ERROR_PCT):
-                log_message("light continuing to use lo humidifier %d" % energized_lo[0]["outlet"])
-                return
+        # should we try to swtich to the least used lo or hi humidifier
+        try_lo = potential_use_lo_other_humidifier(all_lo, all_hi)
 
-        # there are more than one lo humidifiers
-        else:
-            # get the index of the least used lo that is not the energized one
-            if all_lo[0]["outlet"] == energized_lo[0]["outlet"]:
-                least_ne_lo_index = 1
-            else:
-                least_ne_lo_index = 0
+        # if currently using the lo first low and the pick is lo, continue to do so
+        if try_lo and len(energized_lo) > 0 and energized_lo[0]["outlet"] == all_lo[0]["outlet"]:
+            log_message("light continuing to use lo humidifier %d" % energized_lo[0]["outlet"])
+            return
+
+        # if currently using the hi first low and the pick is hi, continue to do so
+        if not try_lo and len(energized_hi) > 0 and energized_hi[0]["outlet"] == all_hi[0]["outlet"]:
+            log_message("light continuing to use hi humidifier %d" % energized_hi[0]["outlet"])
+            return
+
+        # If currently using hi and should use lo, switch
+        if len(energized_hi) == 1 and try_lo:
+            # switch to lo humidifiers
+            log_message("light switching from hi[%d] at %.1f%% used to lo[%d] at %.1f%% used" % (energized_hi[0]["outlet"], energized_hi[0]["pct_used"], all_lo[0]["outlet"], all_lo[0]["pct_used"]))
+            deenergize_humidifier(humidifiers[energized_hi[0]["outlet"]])
+            energize_humidifier(humidifiers[all_lo[0]["outlet"]])
+            return
+
+        # If currently using lo and should use hi, switch
+        if len(energized_lo) == 1 and not try_lo:
+            # switch to hi humidifiers
+            log_message("light switching from lo[%d] at %.1f%% used to hi[%d] at %.1f%% used" % (energized_lo[0]["outlet"], energized_lo[0]["pct_used"], all_hi[0]["outlet"], all_hi[0]["pct_used"]))
+            deenergize_humidifier(humidifiers[energized_lo[0]["outlet"]])
+            energize_humidifier(humidifiers[all_hi[0]["outlet"]])
+            return
+
+        # we're using a lo or hi that is not the one picked, is it worth switching?
+        if try_lo:
             # if the least used is more than SWITCH_PCT above current one, switch to it
             # unused at 40% used, energized at 70% used
-            if (energized_lo[0]["pct_used"] - all_lo[least_ne_lo_index]["pct_used"]) > SWITCH_PCT:
+            if (energized_lo[0]["pct_used"] - all_lo[0]["pct_used"]) > SWITCH_PCT:
                 # switch lo humidifiers
-                log_message("light switching from lo[%d] at %.1f%% used to lo[%d] at %.1f%% used" % (energized_lo[0]["outlet"], energized_lo[0]["pct_used"], all_lo[least_ne_lo_index]["outlet"], all_lo[least_ne_lo_index]["pct_used"]))
+                log_message("light switching from lo[%d] at %.1f%% used to lo[%d] at %.1f%% used" % (energized_lo[0]["outlet"], energized_lo[0]["pct_used"], all_lo[0]["outlet"], all_lo[0]["pct_used"]))
                 deenergize_humidifier(humidifiers[energized_lo[0]["outlet"]])
-                energize_humidifier(humidifiers[all_lo[least_ne_lo_index]["outlet"]])
+                energize_humidifier(humidifiers[all_lo[0]["outlet"]])
                 return
             # not worth switching yet, continue with current one
             log_message("light continuing to use lo humidifier %d" % energized_lo[0]["outlet"])
             return
+        else:
+            # if the least used is more than SWITCH_PCT above current one, switch to it
+            # unused at 40% used, energized at 70% used
+            if (energized_hi[0]["pct_used"] - all_hi[0]["pct_used"]) > SWITCH_PCT:
+                # switch hi humidifiers
+                log_message("light switching from hi[%d] at %.1f%% used to hi[%d] at %.1f%% used" % (energized_hi[0]["outlet"], energized_hi[0]["pct_used"], all_hi[0]["outlet"], all_hi[0]["pct_used"]))
+                deenergize_humidifier(humidifiers[energized_hi[0]["outlet"]])
+                energize_humidifier(humidifiers[all_hi[0]["outlet"]])
+                return
+            # not worth switching yet, continue with current one
+            log_message("light continuing to use hi humidifier %d" % energized_hi[0]["outlet"])
+            return
+
 
     # choose from scratch!
     # de-energize all and we'll energize the one we want to use
@@ -1335,7 +1383,7 @@ def calculate_rh_trend():
     # calculate average of the olde readings
     older_sum = 0
     older_count = 0
-    for i in range(len(prev_rh_readings) - RH_READINGS_TO_TREND * 2, len(prev_rh_readings) - RH_READINGS_TO_TREND):
+    for i in range(len(prev_rh_readings) - (RH_READINGS_BETWEEN_TRENDS + RH_READINGS_TO_TREND), len(prev_rh_readings) - RH_READINGS_BETWEEN_TRENDS):
         if prev_rh_readings[i]["reading"] > 0:
             older_sum = older_sum + prev_rh_readings[i]["reading"]
             older_count = older_count + 1
@@ -1358,9 +1406,9 @@ def calculate_rh_trend():
 
     # based the trend on the differences between the averages
     trend_delta = newest_avg - older_avg
-    if trend_delta < -0.2:
+    if trend_delta < -0.3:
         trend = -1
-    elif trend_delta > 0.2:
+    elif trend_delta > 0.3:
         trend = 1
     else:
         trend = 0
